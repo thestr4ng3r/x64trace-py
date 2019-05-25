@@ -2,6 +2,7 @@
 import struct
 import json
 import enum
+import os
 from functools import reduce
 from dataclasses import dataclass
 
@@ -11,6 +12,9 @@ from . import registers
 MAX_MEMORY_OPERANDS = 32
 
 class TraceParseError(Exception):
+	pass
+
+class TraceFileError(Exception):
 	pass
 
 def _read_exactly(f, size):
@@ -79,6 +83,27 @@ class Trace:
 	@classmethod
 	def load64(cls, f):
 		return cls._load(f, 8)
+
+	@classmethod
+	def loadf32(cls, filename):
+		with open(filename, "rb") as f:
+			return cls.load32(f)
+	
+	@classmethod
+	def loadf64(cls, filename):
+		with open(filename, "rb") as f:
+			return cls.load64(f)
+
+	@classmethod
+	def loadf(cls, filename):
+		_, ext = os.path.splitext(filename)
+		ext = ext.lower()
+		if ext == ".trace32":
+			return cls.loadf32(filename)
+		elif ext == ".trace64":
+			return cls.loadf64(filename)
+		else:
+			raise TraceFileError("File type not recognized")
 
 	@classmethod
 	def _load(cls, f, ptr_sz):

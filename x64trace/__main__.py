@@ -6,8 +6,7 @@ if len(sys.argv) != 2:
 	print(f"usage: {sys.argv[0]} [trace file]")
 	exit(1)
 
-with open(sys.argv[1], "rb") as f:
-	t = x64trace.Trace.load32(f)
+t = x64trace.Trace.loadf(sys.argv[1])
 
 try:
 	import capstone
