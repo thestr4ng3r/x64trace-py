@@ -3,6 +3,24 @@
 
 This is a python library for loading traces (.trace32, .trace64) created with [x64dbg](https://x64dbg.com).
 
+## Install
+
+```
+pip install x64trace
+```
+
+## Example Usage
+
+```python
+import x64trace
+
+t = x64trace.Trace.loadf("MyTrace.trace64")
+
+for block in t.blocks:
+	print("rax: {:#08x}".format(block.registers.regcontext.cax))
+
+```
+
 ## Command line utility
 
 This package comes with a small command line utility that prints all instructions from a trace:
