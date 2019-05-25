@@ -3,12 +3,12 @@ import struct
 import json
 import enum
 from functools import reduce
+from dataclasses import dataclass
 
 from . import registers
 
-header_struct = struct.Struct("<4sI")
-thread_id_struct = struct.Struct("<I")
 
+MAX_MEMORY_OPERANDS = 32
 
 class TraceParseError(Exception):
 	pass
@@ -44,31 +44,47 @@ class Arch(enum.Enum):
 	X64 = "x64"
 
 
+@dataclass
+class MemoryAccess:
+	address: int
+	flags: bytes
+	old: bytes
+	new: bytes
+
+	@property
+	def is_write(self):
+		return (self.flags & 1) == 0
+
+
 class Trace:
 	class Block:
 		def __init__(self):
 			self.thread_id = None
 			self.opcode = None
 			self.registers = None
+			self.mem = []
 
 	def __init__(self, arch, path=None):
 		self.arch = arch
 		self.path = path
 		self.blocks = []
 
-	@staticmethod
-	def load32(f):
-		return Trace._load(f, 4)
+	_header_struct = struct.Struct("<4sI")
+	_thread_id_struct = struct.Struct("<I")
 
-	@staticmethod
-	def load64(f):
-		return Trace._load(f, 8)
+	@classmethod
+	def load32(cls, f):
+		return cls._load(f, 4)
 
-	@staticmethod
-	def _load(f, ptr_sz):
+	@classmethod
+	def load64(cls, f):
+		return cls._load(f, 8)
+
+	@classmethod
+	def _load(cls, f, ptr_sz):
 		assert ptr_sz in [4, 8]
 
-		(magic, hdr_info_sz) = _read_struct(f, header_struct)
+		(magic, hdr_info_sz) = _read_struct(f, cls._header_struct)
 		if magic != b"TRAC":
 			raise TraceParseError("Invalid Magic")
 		if hdr_info_sz > 16384:
@@ -121,7 +137,7 @@ class Trace:
 
 			# thread id
 			if (changed_count_flags[2] & 0x80) != 0:
-				last_thread_id = _read_struct(f, thread_id_struct)[0]
+				last_thread_id = _read_struct(f, cls._thread_id_struct)[0]
 			block.thread_id = last_thread_id
 
 			# opcode
@@ -133,6 +149,7 @@ class Trace:
 
 			# registers
 			regcount = changed_count_flags[0]
+			#is_page_boundary = regcount == regdump_size
 			if regcount > 0:
 				if regcount > regdump_words:
 					raise TraceParseError("Invalid Register Count")
@@ -146,15 +163,25 @@ class Trace:
 					regdump[last_pos*ptr_sz:(last_pos+1)*ptr_sz] = contents[i*ptr_sz:(i+1)*ptr_sz]
 			block.registers = regdump_cls(regdump[:regdump_cls.size])
 
-			memflags = _read_exactly(f, changed_count_flags[1])
-			skip_offset = reduce(
-				lambda a, i: a
-					+ (2 if (memflags[i] & 1) != 0 else 3),
-				range(changed_count_flags[1]),
-				0)
-			_seek_forward_exactly(f, skip_offset * ptr_sz)
+			# memory
+			memcount = changed_count_flags[1]
+			if memcount > 0:
+				if memcount > MAX_MEMORY_OPERANDS:
+					raise TraceParseError("Too many memory changes")
 
-			#is_page_boundary = regcount == regdump_size
+				mem_flags = _read_exactly(f, memcount)
+				mem_address = _read_exactly(f, ptr_sz * memcount)
+				mem_old_content = _read_exactly(f, ptr_sz * memcount)
+
+				for i in range(memcount):
+					address = int.from_bytes(mem_address[i*ptr_sz:(i+1)*ptr_sz], byteorder="little")
+					flags = mem_flags[i]
+					old = mem_old_content[i*ptr_sz:(i+1)*ptr_sz]
+					if (flags & 1) == 0:
+						new = _read_exactly(f, ptr_sz)
+					else:
+						new = old
+					block.mem.append(MemoryAccess(address=address, flags=flags, old=old, new=new))
 
 			trace.blocks.append(block)
 
