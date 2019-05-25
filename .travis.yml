@@ -1,0 +1,16 @@
+language: python
+dist: xenial
+
+python:
+  - '3.7'
+
+script:
+  - python --version
+
+deploy:
+  provider: pypi
+  user: thestr4ng3r
+  password:
+    secure: TQj0CwX0E64yYDprTQ1QXMYxTc7fRQFdOXVorh2oHJoV0HiJYgTFS++488fnXE9m1fmHxKQ5s5CXMaeqH1LRayzqjXmHq1DXHj+UF6B1p4kTo3nyDGLJpqh6YkIO9gyFk9viM7aJJxV+k+W8OtfDq1wNWADmzn9nnZloVrutKPBQ1OrMLhDnaSDTWh/ti6cm1LLk6uzUGEB9JswZhY7riwnOv80VG8qVPVQyVCyq8JnS8bYUgVNpsq5H3CGpUui4pbLlUXp1REGytcQyTZZnsZepY03VGDmlVgLpMMASzt2cpQ2uUDaKrLx8JiVJmti987zNhMTRRvBT0/AL/qM+yLmTRs5Wzt5mT69G3Z/iUh5HenMPhS9fVZXdEY1iw1jJxrgRHp6WEeL3Esl9j3foom16D0JHyVpUPtPnDwnRulC+sYU9w4zn0HmNACEnnkb+o+YyQz68uPhWX2vp26nJi27D5hqsae42AHAoGRGOFtFlGbvkfarq7djkn3aNHZkYMHORcjWI+txrmlhUWdD262dX3pF0UygxmCZwKLGE6gWeSnsWeFUnUUB7gI9kEd6/nPNKsXKJ8pMwsYXAZWh4xBVbpjPEhuyFYsD3+Ahyeo6s9rZdkmnsXSjgoj4Hxmqwtp+KI9PbeKZUjxaWZadgxc1n8vii1f8yN1m5HZBT9sM=
+  on:
+    tags: true
