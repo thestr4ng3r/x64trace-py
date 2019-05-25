@@ -104,9 +104,9 @@ class Trace:
 
 		# read blocks
 		thread_id = None
-		regdump_sz = 216 # TODO: calculate
 		regdump_cls = registers.RegDump64 if ptr_sz == 8 else registers.RegDump32
-		regdump = bytearray(b"\x00" * (regdump_sz * ptr_sz))
+		regdump_words = (regdump_cls.size + 4) // ptr_sz 
+		regdump = bytearray(b"\x00" * (regdump_words * ptr_sz))
 		while True:
 			block_type = f.read(1)
 			if len(block_type) != 1: # eof
@@ -134,17 +134,17 @@ class Trace:
 			# registers
 			regcount = changed_count_flags[0]
 			if regcount > 0:
-				if regcount > regdump_sz:
+				if regcount > regdump_words:
 					raise TraceParseError("Invalid Register Count")
 				changed = _read_exactly(f, regcount)
 				contents = _read_exactly(f, regcount * ptr_sz)
 				last_pos = -1
 				for i in range(regcount):
 					last_pos += changed[i] + 1
-					if last_pos >= regdump_sz:
+					if last_pos >= regdump_words:
 						raise TraceParseError("Out of bounds while reading registers")
 					regdump[last_pos*ptr_sz:(last_pos+1)*ptr_sz] = contents[i*ptr_sz:(i+1)*ptr_sz]
-			block.registers = regdump_cls(regdump)
+			block.registers = regdump_cls(regdump[:regdump_cls.size])
 
 			memflags = _read_exactly(f, changed_count_flags[1])
 			skip_offset = reduce(

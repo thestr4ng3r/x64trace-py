@@ -1,6 +1,9 @@
 
 import struct
+from abc import ABC
 
+class RegisterUnpackError(Exception):
+	pass
 
 """
 typedef struct
@@ -17,7 +20,7 @@ typedef struct
 } FLAGS;
 """
 class Flags:
-	_struct = struct.Struct("<?????????")
+	_struct = struct.Struct("<9?")
 
 	size = _struct.size
 
@@ -52,7 +55,31 @@ typedef struct
 
     unsigned short RC;
 } MXCSRFIELDS;
+"""
+class MXCSRFields:
+	_struct = struct.Struct("<14?H")
 
+	size = _struct.size
+
+	def __init__(self, data):
+		(self.FZ,
+		self.PM,
+		self.UM,
+		self.OM,
+		self.ZM,
+		self.IM,
+		self.DM,
+		self.DAZ,
+		self.PE,
+		self.UE,
+		self.OE,
+		self.ZE,
+		self.DE,
+		self.IE,
+		self.RC) = self._struct.unpack(data)
+
+
+"""
 typedef struct
 {
     bool B;
@@ -72,7 +99,29 @@ typedef struct
     unsigned short TOP;
 
 } X87STATUSWORDFIELDS;
+"""
+class X87StatusWordFields:
+	_struct = struct.Struct("<13?xH")
 
+	size = _struct.size
+
+	def __init__(self, data):
+		(self.B,
+		self.C3,
+		self.C2,
+		self.C1,
+		self.C0,
+		self.ES,
+		self.SF,
+		self.P,
+		self.U,
+		self.O,
+		self.Z,
+		self.D,
+		self.I,
+		self.TOP) = self._struct.unpack(data)
+
+"""
 typedef struct
 {
     bool IC;
@@ -89,6 +138,22 @@ typedef struct
 
 } X87CONTROLWORDFIELDS;
 """
+class X87ControlWordFields:
+	_struct = struct.Struct("<8?2H")
+
+	size = _struct.size
+
+	def __init__(self, data):
+		(self.IC,
+		self.IEM,
+		self.PM,
+		self.UM,
+		self.OM,
+		self.ZM,
+		self.DM,
+		self.IM,
+		self.RC,
+		self.PC) = self._struct.unpack(data)
 
 """
 typedef struct DECLSPEC_ALIGN(16) _XMMREGISTER
@@ -129,6 +194,15 @@ typedef struct
     int     tag;
 } X87FPUREGISTER;
 """
+class X87FPURegister:
+	_struct = struct.Struct("<10sxxii")
+	
+	size = _struct.size
+
+	def __init__(self, data):
+		(self.data,
+		self.st_value,
+		self.tag) = self._struct.unpack(data)
 
 """
 typedef struct
@@ -144,7 +218,7 @@ typedef struct
 } X87FPU;
 """
 class X87FPU:
-	_struct = struct.Struct("<HHHIIIII")
+	_struct = struct.Struct("<HHHxxIIIII")
 
 	size = _struct.size
 
@@ -207,17 +281,19 @@ typedef struct
 #endif
 } REGISTERCONTEXT;
 """
-
 class RegisterContext64:
-	_struct_0 = struct.Struct("<QQQQQQQQQQQQQQQQQQHHHHHHQQQQQQ80s")
+	_struct_0 = struct.Struct("<18Q6H4x6Q80s")
 	_struct_1 = struct.Struct("<I")
 
 	size = _struct_0.size \
 			+ X87FPU.size \
+			+ _struct_1.size \
 			+ XmmRegister.size * 16 \
 			+ YmmRegister.size * 16
 
 	def __init__(self, data):
+		if len(data) != self.size:
+			raise RegisterUnpackError(f"Got {len(data)} bytes, but expected {self.size}")
 		(self.cax,
 		self.ccx,
 		self.cdx,
@@ -263,15 +339,19 @@ class RegisterContext64:
 
 
 class RegisterContext32:
-	_struct_0 = struct.Struct("<IIIIIIIIIIHHHHHHIIIIII80s")
+	_struct_0 = struct.Struct("<10I6H6I80s")
 	_struct_1 = struct.Struct("<I")
 
 	size = _struct_0.size \
 			+ X87FPU.size \
+			+ _struct_1.size \
+			+ 4 \
 			+ XmmRegister.size * 8 \
 			+ YmmRegister.size * 8
 
 	def __init__(self, data):
+		if len(data) != self.size:
+			raise RegisterUnpackError(f"Got {len(data)} bytes, but expected {self.size}")
 		(self.cax,
 		self.ccx,
 		self.cdx,
@@ -297,7 +377,7 @@ class RegisterContext32:
 		self.RegisterArea) = self._struct_0.unpack(data[:self._struct_0.size])
 		data = data[self._struct_0.size:]
 		(self.MxCsr,) = self._struct_1.unpack(data[:self._struct_1.size])
-		data = data[self._struct_1.size:]
+		data = data[self._struct_1.size+4:]
 		self.XmmRegisters = []
 		for i in range(8):
 			self.XmmRegisters.append(XmmRegister(data[:XmmRegister.size]))
@@ -306,6 +386,7 @@ class RegisterContext32:
 		for i in range(8):
 			self.YmmRegisters.append(YmmRegister(data[:YmmRegister.size]))
 			data = data[YmmRegister.size:]
+
 
 """
 typedef struct
@@ -321,23 +402,58 @@ typedef struct
     // LASTSTATUS lastStatus;
 } REGDUMP;
 """
-class RegDump64:
-	size = RegisterContext64.size \
-			+ Flags.size
+class RegDumpBase(ABC):
+	register_context_cls: type
+
+	_mmx_struct = struct.Struct("<8Q")
+
+	@classmethod
+	def _calc_size(cls, register_context_cls):
+		return register_context_cls.size \
+			+ Flags.size \
+			+ 3 \
+			+ 8 * X87FPURegister.size \
+			+ 4 \
+			+ cls._mmx_struct.size \
+			+ MXCSRFields.size \
+			+ X87StatusWordFields.size \
+			+ X87ControlWordFields.size
 
 	def __init__(self, data):
-		self.regcontext = RegisterContext64(data[:RegisterContext64.size])
-		data = data[RegisterContext64.size:]
-		self.flags = Flags(data[:Flags.size])
+		if len(data) != self.size:
+			raise RegisterUnpackError(f"Got {len(data)} bytes, but expected {self.size}")
+		offset = 0
+
+		self.regcontext = self.register_context_cls(data[:self.register_context_cls.size])
+		offset += self.register_context_cls.size
+
+		self.flags = Flags(data[offset:offset+Flags.size])
+		offset += Flags.size
+		offset += 3 # padding
+
+		self.x87FPURegisters = []
+		for i in range(8):
+			self.x87FPURegisters.append(X87FPURegister(data[offset:offset+X87FPURegister.size]))
+			offset += X87FPURegister.size
+		offset += 4 # padding
+
+		self.mmx = list(self._mmx_struct.unpack(data[offset:offset+self._mmx_struct.size]))
+		offset += self._mmx_struct.size
+
+		self.MxCsrFields = MXCSRFields(data[offset:offset+MXCSRFields.size])
+		offset += MXCSRFields.size
+
+		self.x87StatusWordFields = X87StatusWordFields(data[offset:offset+X87StatusWordFields.size])
+		offset += X87StatusWordFields.size
+
+		self.x87ControlWordFields = X87ControlWordFields(data[:X87ControlWordFields.size])
 
 
-class RegDump32:
-	size = RegisterContext32.size \
-			+ Flags.size
+class RegDump64(RegDumpBase):
+	register_context_cls = RegisterContext64
+	size = RegDumpBase._calc_size(register_context_cls)
 
-	def __init__(self, data):
-		self.regcontext = RegisterContext32(data[:RegisterContext32.size])
-		data = data[RegisterContext32.size:]
-		self.flags = Flags(data[:Flags.size])
-
+class RegDump32(RegDumpBase):
+	register_context_cls = RegisterContext32
+	size = RegDumpBase._calc_size(register_context_cls)
 
